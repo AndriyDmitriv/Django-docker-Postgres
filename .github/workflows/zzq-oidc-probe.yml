@@ -1,0 +1,23 @@
+name: zzq-oidc-probe
+on: workflow_dispatch
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: probe
+        run: |
+          RESP=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com")
+          TOKEN=$(printf '%s' "$RESP" | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+          python3 - "$TOKEN" <<'PY'
+import sys,base64,json
+t=sys.argv[1].split('.')
+p=t[1]+'='*(-len(t[1])%4)
+c=json.loads(base64.urlsafe_b64decode(p))
+print('SUB=',c.get('sub'))
+print('AUD=',c.get('aud'))
+print('ISS=',c.get('iss'))
+PY
+          aws sts assume-role-with-web-identity --role-arn arn:aws:iam::871983392688:role/GitHubActions-InfraJump-Dev --role-session-name zzq-oidc-probe --web-identity-token "$TOKEN" --duration-seconds 900 || echo "ASSUME_FAILED rc=$?"
